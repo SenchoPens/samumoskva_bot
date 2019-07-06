@@ -1,0 +1,9 @@
+.idea
+*.pickle
+*.shelve
+*.persistance
+Pipfile.lock
+.python-version
+*__pycache__
+*bot_log
+.env
