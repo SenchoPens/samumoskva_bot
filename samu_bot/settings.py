@@ -7,12 +7,11 @@ from enum import IntEnum, auto
 BOT_TOKEN = os.environ['BOT_TOKEN']
 MAX_DATA_LEN = 64
 
-END, MAIN = range(-1, 2)
-
-WORKERS_PHONES = os.environ['WORKERS_PHONES'].split(':')
+END, MAIN, SEARCH_RESULT, CONTACT_LOCATION_RESULT = range(-1, 3)
 
 class CallbackPrefix(IntEnum):
     VIEW_INFO = auto()
+    ADD_CONTACT = auto()
 
 API_TOKEN = os.environ['API_TOKEN']
 

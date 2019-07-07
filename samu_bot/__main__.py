@@ -31,15 +31,19 @@ logger.info('-' * 50)
 
 
 def remove_prefix(f):
-    """
-    A decorator around callbacks that handle CallbackButton's clicks with cad number in callback data.
-    It removes callback type (prefix) from callback data.
-    """
     @wraps(f)
     def wrapper(update, context):
         update.callback_query.data = update.callback_query.data[1:]
         return f(update, context)
     return wrapper
+
+
+def logged_only(f):
+    @wraps(f)
+    def wrap(update, context):
+        if context.user_data['phone']:
+            return f(update, context)
+    return wrap
 
 
 def start(update, context):
@@ -75,7 +79,7 @@ def auth(update, context):
 def show_help(update, context):
     update.message.reply_text(
         f'Добавить информацию по бездомному: {ActionName.add_person.get_pretty()}'
-        f'\nИскать бездомного в базе данных: {ActionName.search_info.get_pretty()}'
+        f'\nИскать бездомного в базе данных: {ActionName.search.get_pretty()}'
         f'\nВывести эту справку: {ActionName.show_help.get_pretty()}'
         f'\n\nЧтобы добавить информацию о контакте с бездомным, сначала найдите бездомного в базе данных.'
     )
@@ -95,7 +99,7 @@ def add_person(update, context):
 @logged_only
 def ask_name_to_search(update, context):
     update.message.reply_text(
-        'Напишите мне фамилию, имя или отчество бенефициара, или его полное ФИО или ФИ'
+        'Напишите мне фамилию и/или имя бенефициара.'
     )
     return SEARCH_RESULT
 
@@ -105,12 +109,12 @@ def search(update, context):
     #persons = api.search(name)
     persons = [('Батый Мангыр', 1)]
     for person in persons:
-        update.message.reply_text(
-            f'ФИО: {}',
+        update.effective_message.reply_text(
+            f'ФИО: {person[0]}',
             reply_markup=InlineKeyboardMarkup(
                 [[InlineKeyboardButton(
                     text='Подробнее',
-                    callback_data=f'{CallbackPrefix.VIEW_INFO}{}'
+                    callback_data=f'{CallbackPrefix.VIEW_INFO}{person[1]}'
                 )]]
             )
         )
@@ -122,12 +126,12 @@ def view_info(update, context):
     pid = update.callback_query.data
     #info = api.view_info(pid)
     info = 'Разработчик, закончил финяшку'
-    update.message.reply_text(
+    update.effective_message.reply_text(
         info,
         reply_markup=InlineKeyboardMarkup(
             [[InlineKeyboardButton(
-                text='Добавить контакт'
-                callback_data=f'{CallbackPrefix.ADD_CONTACT}{}'
+                text='Добавить контакт',
+                callback_data=f'{CallbackPrefix.ADD_CONTACT}{pid}'
             )]]
         )
     )
@@ -135,20 +139,25 @@ def view_info(update, context):
 
 
 def request_location(update, context):
-    update.message.reply_text(
-        'Чтобы добавить информацию о контакте, перешлите мне свою локацию',
+    update.effective_message.reply_text(
+        'Чтобы добавить информацию о контакте, перешлите мне свою локацию, '
+        'или нажмите сюда: /cancel (отменить операцию)',
         reply_markup=ReplyKeyboardMarkup(
-            [[ReplyKeyboardButton(
+            [[KeyboardButton(
                 text='Отправить локацию',
                 request_location=True,
             )]]
         )
     )
-    return
+    return CONTACT_LOCATION_RESULT
 
 
 def add_contact(update, context):
-    pass
+    location = update.message.location
+    update.message.reply_text(
+        f'Координаты: {(location.latitude, location.longitude)}'
+    )
+    return MAIN
 
 
 def handle_error(update, context):
@@ -167,14 +176,10 @@ def handle_error(update, context):
 
 
 def cancel(update, context):
-    """ Cancel procedure of logging or ordering (/cancel command) """
     return MAIN
 
 
 def end(update, context):
-    """ End conversation (/end command) """
-    cancel(update, context)
-    context.user_data['logged'] = False
     return END
 
 
@@ -209,9 +214,17 @@ def main():
         ],
         states={
             MAIN: [
-                MessageHandler(Filters.contact, fetch_number_from_contact),
+                MessageHandler(Filters.contact, auth),
                 make_handler(add_person, ActionName.add_person),
-                make_handler(search, ActionName.search),
+                make_handler(ask_name_to_search, ActionName.search),
+                CallbackQueryHandler(view_info, pattern=f'^{CallbackPrefix.VIEW_INFO}\d+$'),
+                CallbackQueryHandler(request_location, pattern=f'^{CallbackPrefix.ADD_CONTACT}\d+$'),
+            ],
+            SEARCH_RESULT: [
+                MessageHandler(Filters.text, search),
+            ],
+            CONTACT_LOCATION_RESULT: [
+                MessageHandler(Filters.location, add_contact),
             ],
         },
         fallbacks=[

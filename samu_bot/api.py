@@ -2,8 +2,8 @@ from functools import wraps
 
 from requests import get, post, RequestException
 
-from fo_bot.settings import API_TOKEN
-from fo_bot.logger import logger
+from samu_bot.settings import API_TOKEN
+from samu_bot.logger import logger
 
 
 class APIMethodException(RequestException):

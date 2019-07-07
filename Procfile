@@ -1,2 +1,2 @@
-bot: python3 fo_bot
-proxybot: python3 fo_bot proxy
+bot: python3 samu_bot
+proxybot: python3 samu_bot proxy
