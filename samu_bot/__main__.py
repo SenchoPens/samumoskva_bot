@@ -20,11 +20,15 @@ from telegram import (
     ReplyKeyboardMarkup,
     KeyboardButton,
 )
+import requests
 
 from samu_bot.logger import logger
 from samu_bot.settings import *
 from samu_bot.api import APIMethodException
 from samu_bot.text import ActionName
+from samu_bot import (
+    api,
+)
 
 # Enable logging
 logger.info('-' * 50)
@@ -88,8 +92,7 @@ def show_help(update, context):
 
 @logged_only
 def add_person(update, context):
-    #link = api.add_person()
-    link = 'https://duckduckgo.com/?q=Член'
+    link = f'{API_URL}/addbeneficiary'
     update.message.reply_text(
         f'Чтобы добавить бенефициара, перейдите по этой ссылке: {link}'
     )
@@ -99,14 +102,25 @@ def add_person(update, context):
 @logged_only
 def ask_name_to_search(update, context):
     update.message.reply_text(
-        'Напишите мне фамилию и/или имя бенефициара.'
+        'Напишите мне фамилию и имя бенефициара.'
     )
     return SEARCH_RESULT
 
 
 def search(update, context):
-    name = update.message.text
-    #persons = api.search(name)
+    cred = update.message.text.split()
+    if len(cred) != 2:
+        update.effective_message.reply_text(
+            'Вам нужно ввести фамилию и имя бенефициара.'
+        )
+        return MAIN
+    surname, name = cred
+    logger.info(f'{surname}, {name}')
+    res = requests.get("https://samusocialapp.herokuapp.com/api/beneficiary/info", params={'data': {
+        'Фамилия': surname,
+        'Имя': name,
+    }})
+    logger.info(res.text)
     persons = [('Батый Мангыр', 1)]
     for person in persons:
         update.effective_message.reply_text(
@@ -138,7 +152,9 @@ def view_info(update, context):
     return
 
 
+@remove_prefix
 def request_location(update, context):
+    context.user_data['pid'] = update.callback_query.data
     update.effective_message.reply_text(
         'Чтобы добавить информацию о контакте, перешлите мне свою локацию, '
         'или нажмите сюда: /cancel (отменить операцию)',

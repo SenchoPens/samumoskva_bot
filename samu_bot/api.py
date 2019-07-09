@@ -1,8 +1,6 @@
-from functools import wraps
-
 from requests import get, post, RequestException
 
-from samu_bot.settings import API_TOKEN
+from samu_bot.settings import API_TOKEN, API_URL
 from samu_bot.logger import logger
 
 
@@ -16,7 +14,7 @@ class APIMethodException(RequestException):
 
 
 class APIMethod:
-    _url = 'https://findtheowner.ru/api'
+    _url = API_URL
     def __init__(self, method, token, request_type):
         self._method = self._url + method
         self._token = token
@@ -48,13 +46,7 @@ class APIMethod:
 class API:
     _api_methods = {
         'auth': ('/auth/login', 'post'),
-        'register': ('/auth/register', 'post'),
-        'balance': ('/user/balance', 'post'),
-        'service': ('/service', 'get'),
-        'recharge': ('/pay/recharge', 'post'),
-        'order': ('/order', 'post'),
-        'search': ('/rosreestr/search', 'post'),
-        'info': ('/rosreestr/info', 'post')
+        'search': ('/api/beneficiary/info', 'post')
     }
 
     def __init__(self, token):
@@ -64,14 +56,3 @@ class API:
         logger.debug('API Method call {item}')
         method, request_type = self._api_methods[item]
         return APIMethod(method=method, token=self._token, request_type=request_type)
-
-
-def main():
-    import pprint
-    t = API(API_TOKEN)
-    #t.balance(phone='+79263793151')
-    pprint.pprint(t.search(search='77:01:0001054:1317'))
-
-
-if __name__ == '__main__':
-    main()
