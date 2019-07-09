@@ -71,7 +71,7 @@ def auth(update, context):
     phone = update.message.contact.phone_number.replace('+7', '8')
     logger.info(f'User {update.effective_user.name} send a contact with phone number {phone}')
     context.user_data['phone'] = phone
-    res = requests.get(f'{API_URL}/api/staff/check/auth', params={'data': '{' + f'"phone": "{phone}"' + '}'})
+    res = requests.get(f'{API_URL}/api/staff/check', params={'data': '{' + f'"phone": "{phone}"' + '}'})
     logger.info(res.text)
     update.message.reply_text(
         f'Вы успешно авторизовались.'
@@ -120,7 +120,7 @@ def search(update, context):
     res = requests.get("https://samusocialapp.herokuapp.com/api/beneficiary/info", params={
         'data': '{' + f'"Фамилия": "{surname}", "Имя": "{name}"' + '}',
     })
-    logger.info(res.text)
+    logger.info((res.text, res.))
     persons = [('Батый Мангыр', 1)]
     for person in persons:
         update.effective_message.reply_text(
