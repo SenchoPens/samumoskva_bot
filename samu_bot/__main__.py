@@ -116,10 +116,9 @@ def search(update, context):
         return MAIN
     surname, name = cred
     logger.info(f'{surname}, {name}')
-    res = requests.get("https://samusocialapp.herokuapp.com/api/beneficiary/info", params={'data': {
-        'Фамилия': surname,
-        'Имя': name,
-    }})
+    res = requests.get("https://samusocialapp.herokuapp.com/api/beneficiary/info", params={
+        'data': '{' + f'"Фамилия": "{surname}", "Имя": "{name}"' + '}',
+    })
     logger.info(res.text)
     persons = [('Батый Мангыр', 1)]
     for person in persons:
