@@ -69,14 +69,16 @@ def start(update, context):
 
 def auth(update, context):
     phone = update.message.contact.phone_number.replace('+7', '8')
+    if phone.startswith('7'):
+        phone = '8' + phone[1:]
     logger.info(f'User {update.effective_user.name} send a contact with phone number {phone}')
-    context.user_data['phone'] = phone
     res = requests.get(f'{API_URL}/api/staff/check', params={'data': '{' + f'"phone": "{phone}"' + '}'})
-    logger.info(res.text)
-    update.message.reply_text(
-        f'Вы успешно авторизовались.'
-    )
-    show_help(update, context)
+    if res.text == 'True':
+        context.user_data['phone'] = phone
+        update.message.reply_text(
+            f'Вы успешно авторизовались.'
+        )
+        show_help(update, context)
     return MAIN
 
 
@@ -121,6 +123,7 @@ def search(update, context):
         'data': '{' + f'"Фамилия": "{surname}", "Имя": "{name}"' + '}',
     })
     logger.info(res.text)
+    res_json =
     persons = [('Батый Мангыр', 1)]
     for person in persons:
         update.effective_message.reply_text(
@@ -132,23 +135,23 @@ def search(update, context):
                 )]]
             )
         )
+        pid = update.callback_query.data
+        #info = api.view_info(pid)
+        info = 'Разработчик, закончил финяшку'
+        update.effective_message.reply_text(
+            info,
+            reply_markup=InlineKeyboardMarkup(
+                [[InlineKeyboardButton(
+                    text='Добавить контакт',
+                    callback_data=f'{CallbackPrefix.ADD_CONTACT}{pid}'
+                )]]
+            )
+    )
     return MAIN
 
 
 @remove_prefix
 def view_info(update, context):
-    pid = update.callback_query.data
-    #info = api.view_info(pid)
-    info = 'Разработчик, закончил финяшку'
-    update.effective_message.reply_text(
-        info,
-        reply_markup=InlineKeyboardMarkup(
-            [[InlineKeyboardButton(
-                text='Добавить контакт',
-                callback_data=f'{CallbackPrefix.ADD_CONTACT}{pid}'
-            )]]
-        )
-    )
     return
 
 
