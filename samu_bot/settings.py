@@ -11,6 +11,7 @@ END, MAIN, SEARCH_RESULT, CONTACT_LOCATION_RESULT = range(-1, 3)
 
 
 class CallbackPrefix(IntEnum):
+    VIEW_INFO = auto()
     ADD_CONTACT = auto()
 
 

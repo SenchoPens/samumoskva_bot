@@ -26,12 +26,14 @@ from samu_bot.logger import logger
 from samu_bot.settings import *
 from samu_bot.api import APIMethodException
 from samu_bot.text import ActionName
-from samu_bot import (
-    api,
-)
 
 # Enable logging
 logger.info('-' * 50)
+
+
+class ObjectId:
+    def __init__(self, _):
+        pass
 
 
 def remove_prefix(f):
@@ -48,6 +50,14 @@ def logged_only(f):
         if context.user_data['phone']:
             return f(update, context)
     return wrap
+
+
+def format_for_get(*args):
+    return {'data': '{' + ', '.join(f'{key}: {value}' for key, value in args) + '}'}
+
+
+def dict_to_telegram_text(d):
+    return '\n'.join(f'*{key}*: {value}' for key, value in d.items())
 
 
 def start(update, context):
@@ -72,7 +82,7 @@ def auth(update, context):
     if phone.startswith('7'):
         phone = '8' + phone[1:]
     logger.info(f'User {update.effective_user.name} send a contact with phone number {phone}')
-    res = requests.get(f'{API_URL}/api/staff/check', params={'data': '{' + f'"phone": "{phone}"' + '}'})
+    res = requests.get(f'{API_URL}/api/staff/check', params=format_for_get(('"phone"', f'"{phone}"')))
     if res.text == 'True':
         context.user_data['phone'] = phone
         update.message.reply_text(
@@ -119,35 +129,52 @@ def search(update, context):
         return MAIN
     surname, name = cred
     logger.info(f'{surname}, {name}')
-    res = requests.get("https://samusocialapp.herokuapp.com/api/beneficiary/info", params={
-        'data': '{' + f'"Фамилия": "{surname}", "Имя": "{name}"' + '}',
-    })
-    logger.info(res.text)
-    res_json =
-    persons = [('Батый Мангыр', 1)]
-    for person in persons:
-        update.effective_message.reply_text(
-            f'ФИО: {person[0]}',
-            reply_markup=InlineKeyboardMarkup(
-                [[InlineKeyboardButton(
-                    text='Подробнее',
-                    callback_data=f'{CallbackPrefix.VIEW_INFO}{person[1]}'
-                )]]
-            )
-        )
-        pid = update.callback_query.data
-        #info = api.view_info(pid)
-        info = 'Разработчик, закончил финяшку'
-        update.effective_message.reply_text(
-            info,
-            reply_markup=InlineKeyboardMarkup(
-                [[InlineKeyboardButton(
-                    text='Добавить контакт',
-                    callback_data=f'{CallbackPrefix.ADD_CONTACT}{pid}'
-                )]]
-            )
+    res = requests.get(
+        f'{API_URL}/api/beneficiary/info',
+        params=format_for_get(('"Фамилия"', f'"{surname}"'), ('"Имя"', f'"{name}"'))
     )
+    logger.info(res.text)
+    #res_json = json.loads(('[{' + txt[txt.find(',') + 1:]).replace("'", '"'))
+    persons = eval(res.text)
+    for person in persons:
+        send_info_about_person(update, context, person=person)
     return MAIN
+
+
+def send_info_about_person(update, context, *, person):
+    person.pop('_id')
+    pid = person.pop('id')
+    contacts = person.pop('Посещения')
+    update.effective_message.reply_text(
+        dict_to_telegram_text(person),
+        parse_mode='markdown',
+    )
+    """
+        reply_markup=InlineKeyboardMarkup(
+            [[InlineKeyboardButton(
+                text=f'{i}',
+                callback_data=f'{CallbackPrefix.VIEW_INFO}{person[1]}'
+            )] for i in range(len(contacts))]
+        ),
+    )
+    """
+    update.effective_message.reply_text(
+        'Посещения:'
+    )
+    for contact in contacts:
+        update.effective_message.reply_text(
+            dict_to_telegram_text(contact),
+            parse_mode='markdown'
+        )
+    update.effective_message.reply_text(
+        f'Всего посещений: {len(contacts)}',
+        reply_markup=InlineKeyboardMarkup(
+            [[InlineKeyboardButton(
+                text='Добавить контакт',
+                callback_data=f'{CallbackPrefix.ADD_CONTACT}{pid}'
+            )]]
+        )
+    )
 
 
 @remove_prefix
@@ -172,9 +199,18 @@ def request_location(update, context):
 
 
 def add_contact(update, context):
+    pid = context.user_data['pid']
     location = update.message.location
     update.message.reply_text(
         f'Координаты: {(location.latitude, location.longitude)}'
+    )
+    lat, long = location.latitude, location.longitude
+    user = update.effective_user
+    surname, name = user.last_name, user.first_name
+    fucking_json = format_for_get(('"location"', [lat, long]), ('"staff"', [f'"{surname}"', f'"{name}"']))['data']
+    link = f'{API_URL}/{pid}/regular_check/?data={fucking_json}'
+    update.message.reply_text(
+        f'Чтобы добавить контакт, перейдите по этой ссылке: {link}'
     )
     return MAIN
 
