@@ -36,6 +36,9 @@ class ObjectId:
         pass
 
 
+command_markup = ReplyKeyboardMarkup([[KeyboardButton(x)] for x in ('Добавить', 'Искать', 'Помощь')])
+
+
 def remove_prefix(f):
     @wraps(f)
     def wrapper(update, context):
@@ -82,13 +85,28 @@ def auth(update, context):
     if phone.startswith('7'):
         phone = '8' + phone[1:]
     logger.info(f'User {update.effective_user.name} send a contact with phone number {phone}')
-    res = requests.get(f'{API_URL}/api/staff/check', params=format_for_get(('"phone"', f'"{phone}"')))
+    try:
+        res = requests.get(f'{API_URL}/api/staff/check/', params=format_for_get(('"phone"', f'"{phone}"')))
+        res.raise_for_status()
+    except requests.RequestException as e:
+        logger.info(f'Request error on search: {e}')
+        update.effective_message.reply_text(
+            'Что-то не так с сервером. Пожалуйста, повторите авторизвацию позже.'
+        )
+        return END
+    logger.info(res.text, res.url)
     if res.text == 'True':
         context.user_data['phone'] = phone
         update.message.reply_text(
-            f'Вы успешно авторизовались.'
+            f'Вы успешно авторизовались.',
+            reply_markup=command_markup,
         )
         show_help(update, context)
+    else:
+        update.message.reply_text(
+            'Ваш номер телефона отсутствует в системе.'
+        )
+        return END
     return MAIN
 
 
@@ -98,16 +116,8 @@ def show_help(update, context):
         f'Добавить информацию по бездомному: {ActionName.add_person.get_pretty()}'
         f'\nИскать бездомного в базе данных: {ActionName.search.get_pretty()}'
         f'\nВывести эту справку: {ActionName.show_help.get_pretty()}'
-        f'\n\nЧтобы добавить информацию о контакте с бездомным, сначала найдите бездомного в базе данных.'
-    )
-    return
-
-
-@logged_only
-def add_person(update, context):
-    link = f'{API_URL}/addbeneficiary'
-    update.message.reply_text(
-        f'Чтобы добавить бенефициара, перейдите по этой ссылке: {link}'
+        f'\n\nЧтобы добавить информацию о контакте с бездомным, сначала найдите бездомного в базе данных.',
+        reply_markup=command_markup,
     )
     return
 
@@ -122,22 +132,43 @@ def ask_name_to_search(update, context):
 
 def search(update, context):
     cred = update.message.text.split()
-    if len(cred) != 2:
+    if len(cred) not in range(1, 4):
         update.effective_message.reply_text(
             'Вам нужно ввести фамилию и имя бенефициара.'
         )
         return MAIN
-    surname, name = cred
-    logger.info(f'{surname}, {name}')
-    res = requests.get(
-        f'{API_URL}/api/beneficiary/info',
-        params=format_for_get(('"Фамилия"', f'"{surname}"'), ('"Имя"', f'"{name}"'))
-    )
-    logger.info(res.text)
-    #res_json = json.loads(('[{' + txt[txt.find(',') + 1:]).replace("'", '"'))
-    persons = eval(res.text)
+    data = zip(('"Фамилия"', '"Имя"', '"Отчество"'), (f'"{x}"' for x in cred))
+
+    try:
+        res = requests.get(
+            f'{API_URL}/api/beneficiary/info/',
+            params=format_for_get(*data)
+        )
+        res.raise_for_status()
+    except requests.RequestException as e:
+        logger.info(f'Request error on search: {e}')
+        update.effective_message.reply_text(
+            'Что-то не так с сервером. Пожалуйста, повторите поиск позже.'
+        )
+        return MAIN
+
+    try:
+        #res_json = json.loads(('[{' + txt[txt.find(',') + 1:]).replace("'", '"'))
+        logger.info(res.text)
+        persons = eval(res.text)
+    except SyntaxError as e:
+        logger.info(f'Eval error on search: {e}')
+        update.effective_message.reply_text(
+            'Произошла какая-то ошибка. Пожалуйста, повторите поиск позже.'
+        )
+        return MAIN
+
     for person in persons:
         send_info_about_person(update, context, person=person)
+    if not persons:
+        update.effective_message.reply_text(
+            'Ваш запрос не дал никаких результатов.'
+        )
     return MAIN
 
 
@@ -175,6 +206,7 @@ def send_info_about_person(update, context, *, person):
             )]]
         )
     )
+    return MAIN
 
 
 @remove_prefix
@@ -183,8 +215,9 @@ def view_info(update, context):
 
 
 @remove_prefix
-def request_location(update, context):
+def request_location_for_contact(update, context):
     context.user_data['pid'] = update.callback_query.data
+    context.user_data['chosen'] = add_contact
     update.effective_message.reply_text(
         'Чтобы добавить информацию о контакте, перешлите мне свою локацию, '
         'или нажмите сюда: /cancel (отменить операцию)',
@@ -198,20 +231,55 @@ def request_location(update, context):
     return CONTACT_LOCATION_RESULT
 
 
-def add_contact(update, context):
-    pid = context.user_data['pid']
-    location = update.message.location
-    update.message.reply_text(
-        f'Координаты: {(location.latitude, location.longitude)}'
+def request_location_for_person(update, context):
+    context.user_data['chosen'] = add_person
+    update.effective_message.reply_text(
+        'Чтобы добавить информацию о бенефициаре, перешлите мне свою локацию',
+        reply_markup=ReplyKeyboardMarkup(
+            [
+             [KeyboardButton(
+                text='Отправить локацию',
+                request_location=True,
+            )],
+             [KeyboardButton(
+                 text='Отменить'
+             )],
+            ]
+        )
     )
+    return CONTACT_LOCATION_RESULT
+
+
+def accept_location(update, context):
+    location = update.message.location
     lat, long = location.latitude, location.longitude
     user = update.effective_user
     surname, name = user.last_name, user.first_name
-    fucking_json = format_for_get(('"location"', [lat, long]), ('"staff"', [f'"{surname}"', f'"{name}"']))['data']
-    link = f'{API_URL}/{pid}/regular_check/?data={fucking_json}'
+    return context.user_data['chosen'](update, context, params=f'?coordinates={lat}+{long}&staff={surname}+{name}')
+
+
+def add_person(update, context, *, params):
+    link = f'{API_URL}/addbeneficiary{params}'
     update.message.reply_text(
-        f'Чтобы добавить контакт, перейдите по этой ссылке: {link}'
+        f'Чтобы добавить бенефициара, нажмите на эту кнопку, чтобы перейти на сайт и заполнить анкету:',
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton(text='Заполнить анкету', url=link)
+        ]])
     )
+    show_help(update, context)
+    return MAIN
+
+
+def add_contact(update, context, *, params):
+    pid = context.user_data['pid']
+    link = f'{API_URL}/{pid}/regular_check/{params}'
+    update.message.reply_text(
+        'Чтобы добавить контакт на сайте, нажмите на эту кнопку:',
+        reply_markup=InlineKeyboardMarkup(
+            [[InlineKeyboardButton(text='Добавить контакт', url=link)]]
+        )
+    )
+    show_help(update, context)
     return MAIN
 
 
@@ -228,13 +296,16 @@ def handle_error(update, context):
             err = 'Something bad'
             update.effective_message.reply_text('Извините, произошла какая-то ошибка. Попробуйте позже.')
         logger.warning(f'API error: "{err}" with api request by {update.effective_user.name}')
+    return MAIN
 
 
 def cancel(update, context):
+    logger.info('User canceled')
     return MAIN
 
 
 def end(update, context):
+    logger.info('User ended conversation')
     return END
 
 
@@ -270,16 +341,16 @@ def main():
         states={
             MAIN: [
                 MessageHandler(Filters.contact, auth),
-                make_handler(add_person, ActionName.add_person),
+                make_handler(request_location_for_person, ActionName.add_person),
                 make_handler(ask_name_to_search, ActionName.search),
                 CallbackQueryHandler(view_info, pattern=f'^{CallbackPrefix.VIEW_INFO}\d+$'),
-                CallbackQueryHandler(request_location, pattern=f'^{CallbackPrefix.ADD_CONTACT}\d+$'),
+                CallbackQueryHandler(request_location_for_contact, pattern=f'^{CallbackPrefix.ADD_CONTACT}\d+$'),
             ],
             SEARCH_RESULT: [
                 MessageHandler(Filters.text, search),
             ],
             CONTACT_LOCATION_RESULT: [
-                MessageHandler(Filters.location, add_contact),
+                MessageHandler(Filters.location, accept_location),
             ],
         },
         fallbacks=[
@@ -295,7 +366,8 @@ def main():
     # log all errors
     dp.add_error_handler(handle_error)
 
-    if 'debug-start' in sys.argv:
+    #if 'debug-start' in sys.argv:
+    if True:
         conv_handler.conversations[(182705944, 182705944)] = None
         dp.user_data[182705944] = {}
 
